@@ -1,0 +1,273 @@
+load("RCinput.mat");
+load('thermal.mat');
+load('JanFeb_Prices.mat');
+load('Case1_out.mat');
+t= DateTime_clean(1:n);
+
+%% Run Baseline function 
+[Tb, Tb_avg, Qb, Qb_avg, Eb_tot_kWh, Eb_zone_kWh, E_J_e] = ...
+    Building_RC_Thermostat( T_out(1:n), dt,n*dt,num_f, C_zone, R_total, R_zone,T_initial, T_set, Q_int, COP);
+
+%% Electrical Energy baseline without DSM 
+Eb_step_kWh = sum(E_J_e, 2)/ 3.6e6; %converting from Joules to kWh for each hour - summed up all the floors for each hour 
+costb_step  = Eb_step_kWh .* Price(1:n);  % € per step (baseline)
+cost_BL_total = sum(costb_step);
+
+%from CASE 1 DSM
+Qtot_DSM = sum(Q1_values(1:n,:), 2);                          % W across floors
+E_DSM_step_kWh = (Qtot_DSM * dt) / (3.6e6 * COP);% kWh each step
+cost_DSM_step = E_DSM_step_kWh .* Price(1:n);                  % € per step
+cost_DSM_total = sum(cost_DSM_step);
+
+%Saved amount 
+abs_savings = cost_BL_total- cost_DSM_total;
+percent_savings= 100* abs_savings/max(1e-9,cost_BL_total);
+fprintf('Baseline cost = €%.2f | DSM cost = €%.2f | Savings = €%.2f (%.1f%%)\n', cost_BL_total, cost_DSM_total, abs_savings, percent_savings);
+
+% Helpful aggregates for plots
+Tavg_DSM = mean(T1_values(1:n,:), 2);% °C, DSM average across floors
+Qtot_BL  = sum(Qb(1:n,:), 2);% W, Baseline total heat
+Pel_DSM  = Qtot_DSM./COP/1000;% kW
+Pel_BL   = Qtot_BL ./COP/1000;% kW
+
+%% 1) Indoor temperature vs time (DSM vs Baseline)
+
+figure('Name','Indoor vs Outdoor Temperature','Color','w');
+
+% --- Indoor subplot ---
+subplot(2,1,1);
+plot(t, Tavg_DSM, 'LineWidth', 1.6); hold on; 
+plot(t, Tb_avg(1:n), '--', 'LineWidth', 1.4);
+% Define RGB colors (each component is between 0 and 1)
+darkRed = [0.5 0 0];     % darker shade of red
+darkGreen = [0 0.4 0];   % darker shade of green
+yline(T_min, '-', 'T_{min}', ...
+    'Color', darkRed, 'LabelColor', 'k', ...
+    'LabelHorizontalAlignment', 'left', ...
+    'LabelVerticalAlignment', 'middle');
+
+yline(T_max, '-', 'T_{max}', ...
+    'Color', darkGreen, 'LabelColor', 'k', ...
+    'LabelHorizontalAlignment', 'left', ...
+    'LabelVerticalAlignment', 'middle');
+
+% yline(T_min, 'r-', 'T_{min}');
+% yline(T_max, 'g-', 'T_{max}');
+ylabel('Indoor Temp (°C)');
+legend('Indoor avg (DSM)', ...
+       'Indoor avg (Baseline)', ...
+       'T_{min}','T_{max}', ...
+       'Location','best');
+title('Indoor Temperature vs Time');
+% axis to have all the days in the horizon
+ax = gca;
+ax.XLim = [t(1) t(end)];
+ax.XTick = t(1:24:end);% one tick per day
+datetick('x','dd-mmm','keepticks');
+ax.XGrid = 'on'; ax.YGrid = 'on';
+ax.GridAlpha = 0.3; ax.LineWidth = 0.8;
+
+% Outdoor temperature  subplot ---
+subplot(2,1,2);
+plot(t, T_out(1:n), 'Color',[0.9 0.5 0],'LineWidth',1.2); hold on;
+ylabel('Outdoor Temp (°C)'); xlabel('Time');
+legend('T_{out}','Location','best');
+title('Outdoor Temperature vs Time');
+
+ax = gca;
+ax.XLim = [t(1) t(end)];
+ax.XTick = t(1:24:end);              % one tick per day
+datetick('x','dd-mmm','keepticks');
+ax.XGrid = 'on'; ax.YGrid = 'on';
+ax.GridAlpha = 0.3; ax.LineWidth = 0.8;
+
+% Optional: consistent font size
+set(findall(gcf,'-property','FontSize'),'FontSize',14);
+
+
+%% 2) HVAC heating profile (thermal power) + price
+figure('Name','HVAC Thermal Power','Color','w');
+% --- Thermal Power ---
+%subplot(2,1,1); %if you want subplot
+plot(t, Qtot_DSM/1000, '-r','LineWidth',1.2); hold on; grid on;
+plot(t, Qtot_BL/1000, '-b','LineWidth',0.8);
+ylabel('Thermal power (kW)');
+xlabel('Time');
+legend('Q_{DSM} total','Q_{Baseline} total','Location','best');
+title('HVAC Thermal Power');
+ax = gca;
+ax.XLim = [t(1) t(end)];
+ax.XTick = t(1:24:end);  % one tick per day
+datetick('x','dd-mmm','keepticks');
+ax.XGrid = 'on'; ax.YGrid = 'on';
+ax.GridAlpha = 0.3; ax.LineWidth = 0.8;
+%% Price 
+figure(10)
+plot(t, Price(1:n)*1000, 'g', 'LineWidth', 1.2); 
+grid on;
+
+ylabel('Price (€/MWh)');
+xlabel('Time');
+title('Electricity Price');
+
+ax = gca;
+ax.XLim = [t(1) t(end)];
+ax.XTick = t(1:24:end); % one tick per day
+datetick('x','dd-mmm','keepticks');
+
+ax.XGrid = 'on'; 
+ax.YGrid = 'on';
+ax.GridAlpha = 0.3; 
+ax.LineWidth = 0.8;
+
+set(findall(gcf,'-property','FontSize'),'FontSize',14);
+
+%% 3) Cost vs Baseline (hourly and cumulative)
+%Hourly Cost Figure
+figure('Name','Hourly Cost: DSM vs Baseline');
+
+plot(t, cost_DSM_step, 'LineWidth', 1.2); hold on;
+plot(t, costb_step, '-r', 'LineWidth', 1.2);
+grid on;
+
+ylabel('€ per hour');
+xlabel('Time');
+legend('DSM','Baseline','Location','best');
+title('Hourly Cost');
+
+ax = gca;
+ax.XLim = [t(1) t(end)];
+ax.XTick = t(1:24:end);        % one tick per day
+datetick('x','dd-mmm','keepticks');
+
+ax.XGrid = 'on'; 
+ax.YGrid = 'on';
+ax.GridAlpha = 0.3; 
+ax.LineWidth = 0.8;
+
+set(findall(gcf,'-property','FontSize'),'FontSize',14);
+
+% Cumulative Cost Figure
+figure('Name','Cumulative Cost: DSM vs Baseline');
+
+plot(t, cumsum(cost_DSM_step), 'LineWidth', 1.6); hold on;
+plot(t, cumsum(costb_step), '--', 'LineWidth', 1.6);
+grid on;
+
+ylabel('€ cumulative');
+xlabel('Time');
+
+legend(sprintf('DSM (total €%.0f)', cost_DSM_total), ...
+       sprintf('Baseline (total €%.0f)', cost_BL_total), ...
+       'Location','best');
+
+title(sprintf('Cumulative Cost (Savings = €%.0f, %.1f%%)', ...
+       abs_savings, percent_savings));
+
+ax = gca;
+ax.XLim = [t(1) t(end)];
+ax.XTick = t(1:24:end);        % one tick per day
+datetick('x','dd-mmm','keepticks');
+
+ax.XGrid = 'on'; 
+ax.YGrid = 'on';
+ax.GridAlpha = 0.3; 
+ax.LineWidth = 0.8;
+
+set(findall(gcf,'-property','FontSize'),'FontSize',14);
+
+%% Electric Power & Price 
+% Assumes you already have: t, Pel_DSM, Pel_BL, Price, n
+
+% --- 1) Align lengths safely ---
+n = min([numel(t), numel(Pel_DSM), numel(Pel_BL), numel(Price)]);
+t = t(1:n);
+Pel_DSM = Pel_DSM(1:n);
+Pel_BL  = Pel_BL(1:n);
+Price   = Price(1:n);
+
+% --- 2) Choose smoothing window (≈ 24 hours) ---
+if isdatetime(t)
+    dt_hours = hours(median(diff(t)));
+    if ~isfinite(dt_hours) || dt_hours <= 0, dt_hours = 1; end
+    win = max(1, round(24 / dt_hours));  % samples in ~24h
+else
+    % If t is numeric and ~hourly samples, use 24 samples
+    win = 24;
+end
+
+% --- 3) Smooth the power series ---
+Pel_DSM_s = movmean(Pel_DSM, win);
+Pel_BL_s  = movmean(Pel_BL,  win);
+
+% --- 4) Plot with yyaxis (original faint + smoothed bold) ---
+figure('Name','Electric Power (kW_e) & Price','Color','w');
+
+yyaxis left
+hold on; grid on;
+
+% faint originals (detail preserved but de-emphasized)
+plot(t, Pel_DSM, '-', 'LineWidth', 0.6, 'Color', [1 0 0 0.25]); % translucent red
+plot(t, Pel_BL,  '-', 'LineWidth', 0.6, 'Color', [0 0 1 0.25]); % translucent blue
+
+% smoothed overlays (readable trend)
+plot(t, Pel_DSM_s, '-r', 'LineWidth', 1.6);
+plot(t, Pel_BL_s,  '-b', 'LineWidth', 1.6);
+
+ylabel('Electric power (kW_e)');
+
+yyaxis right
+plot(t, Price, ':k', 'LineWidth', 1.6);
+ylabel('Price (€/kWh)');
+xlabel('Time');
+title('Electrical power (hourly detail faint) vs. price (24h trend)');
+
+% Build a clear legend (only the key lines)
+legend({'DSM (orig, faint)', 'Baseline (orig, faint)', ...
+        sprintf('DSM (%dh avg)', round(win)), sprintf('Baseline (%dh avg)', round(win)), ...
+        'Price'}, 'Location','best');
+
+% Optional: tighten axes & nicer fonts
+set(gca,'FontSize',11);
+axis tight;
+
+%% ELectric Power and price 
+
+figure('Name','Electric Power & Price','Color','w');
+
+subplot(2,1,1);
+hold on; grid on;
+plot(t, Pel_DSM, '-', 'LineWidth', 0.6, 'Color', [1 0 0 0.50]);
+plot(t, Pel_BL,  '-', 'LineWidth', 0.6, 'Color', [0 0 1 0.50]);
+plot(t, Pel_DSM_s, '-r', 'LineWidth', 1.0);
+plot(t, Pel_BL_s,  '-b', 'LineWidth', 1.0);
+ylabel('Power (kW_e)');
+legend({'DSM (orig)','Baseline (orig)', ...
+        sprintf('DSM (%dh avg)', round(win)), sprintf('Baseline (%dh avg)', round(win))}, ...
+        'Location','best');
+title('DSM vs Baseline Power');
+
+subplot(2,1,2);
+hold on; grid on;
+plot(t, Price, 'b', 'LineWidth', 1.0);
+ylabel('Price (€/kWh)'); xlabel('Time');
+title('Electricity Price');
+% set(findall(gcf,'-property','FontSize'),'FontSize',11);
+
+
+%% (Optional) Slack heatmap (only if any slack > 0)
+if any(slack_val(:) > 1e-6)
+    figure('Name','Slack heatmap');
+    imagesc(t, 1:num_f, (slack_val(1:n,:))'); colorbar;
+    xlabel('Time'); ylabel('Floor'); title('Lower-bound slack (°C)');
+end
+
+save("plotCase1.mat");
+Baseline.cost_total = cost_BL_total;
+Baseline.energy_kWh = sum(Eb_step_kWh);
+Baseline.peak_kWth  = max(Qtot_BL)/1000;   % kW
+Baseline.cost_step  = costb_step;
+Baseline.energy_step= Eb_step_kWh;
+Baseline.time       = t;
+
+save('Baseline_out.mat','Baseline');
