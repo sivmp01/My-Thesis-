@@ -63,9 +63,12 @@ These are the files of my execution
 
 4. thermal.mat — Building thermal properties
 
-5. Baseline_out.mat, Case1_out.mat, Case2_out.mat, Case3_TCVaR.mat — Stored results
+6. Baseline_out.mat, Case1_out.mat, Case2_out.mat, Case3_TCVaR.mat — Stored results
 
 **Code Exection Structure**
 1. Execute input_file.mat
 2. Execute Tin_Day.m
 3. Then the Cases and the plot files 
+
+
+**_If you would like to read my thesis report kindly search the title in divaportal.se - or my name in the same portal_**
